@@ -60,7 +60,7 @@ Dropout (probability=0.2)
         ↓
 Dense Layer (1 neuron, learning_rate=0.001)
         ↓
-Sigmoid Activation (output bounded [0, 1] untuk regression)
+Sigmoid Activation (output bounded [0, 1] yang kemudian di-denormalisasi ke [0, 7937] dari dataset)
 ```
 
 **Pilihan Arsitektur**:
@@ -72,15 +72,15 @@ Sigmoid Activation (output bounded [0, 1] untuk regression)
 
 ## Konfigurasi Training
 
-- **Loss Function**: Mean Squared Error (MSE) - standar untuk regression
+- **Loss Function**: Mean Absolute Error (MAE) 
 - **Optimizer**: Gradient Descent dengan Backpropagation
 - **Learning Rate**: 0.001 (kontrol ukuran langkah dalam update parameter)
 - **Batch Size**: 128 sampel per gradient update
 - **Epochs**: 500 pass lengkap melalui training data
 - **Gradient Clipping**: ±1.0 (cegah exploding gradient)
-- **Output Activation**: Sigmoid (untuk bounded regression output)
+- **Output Activation**: Sigmoid (untuk bounded output)
 
-### Output Activation: Sigmoid untuk Regression
+### Output Activation: Sigmoid
 
 Model menggunakan **Sigmoid activation** pada output layer untuk menjamin prediksi berada dalam range yang valid:
 
@@ -96,8 +96,9 @@ Range output: [0, 1]
 
 **Pipeline Denormalisasi**:
 1. Sigmoid output bounded: $\hat{y}_{sigmoid} \in [0, 1]$
-2. Denormalisasi ke range target asli: $\hat{y}_{original} = \hat{y}_{sigmoid} \times (y_{max} - y_{min}) + y_{min}$
-3. Result: $\hat{y}_{original} \in [0, 7937]$ (always valid range)
+2. Denormalisasi ke range target asli: 
+    $$\hat{y}_{original} = \hat{y}_{sigmoid} \times (y_{max} - y_{min}) + y_{min}$$
+3. Hasil: $\hat{y}_{original} \in [0, 7937]$ (always valid range)
 
 **Proses Gradient Descent**:
 1. Forward pass: Propagasi input melalui layer jaringan
@@ -109,18 +110,18 @@ Range output: [0, 1]
 
 ## Metrik Performa
 
-### Metrik Regression
+### Metrik Penilaian
 
 1. **R² Score (Coefficient of Determination)**
      - Formula: $R^2 = 1 - \frac{\sum(y_{true} - y_{pred})^2}{\sum(y_{true} - y_{mean})^2}$
      - Range: -∞ hingga 1.0 (1.0 adalah prediksi sempurna)
      - Interpretasi: Proporsi varians target yang dijelaskan model
-     - **Training R²**: 0.7992 (excellent - menjelaskan 79,92% varians training)
-     - **Test R²**: 0.7765 (generalisasi solid - menjelaskan 77,65% varians test)
+     - **Training R²**: 0.8085 (good - menjelaskan 80.85% varians training)
+     - **Test R²**: 0.7765 (generalisasi solid - menjelaskan 77.65% varians test)
 
 2. **Mean Absolute Error (MAE)**
      - Formula: $MAE = \frac{1}{n} \sum |y_{true} - y_{pred}|$
-     - **Test MAE**: 12,60% (persentase target range)
+     - **Test MAE**: 12.60% (persentase target range)
      - **Test MAE (unit asli)**: ~996 unit
      - Interpretasi: Deviasi absolut rata-rata dari nilai sebenarnya
 
@@ -135,9 +136,9 @@ Range output: [0, 1]
 |--------|-------|------|--------|
 | R² Score | 0.8085 | 0.7765 | Kuat |
 | MAE (%) | ~9.03% | 9.85% | Cukup |
-| RMSE (%) | ~14% | 16,97% | Cukup |
+| RMSE (%) | ~14.32% | 16.97% | Cukup |
 
-**Interpretasi**: Model mencapai performa prediktif kuat pada test data unseen dengan R² > 0,77, menunjukkan arsitektur 7-feature single-layer efektif menangkap pola kelembaban tanah meskipun ada constraint arsitektur.
+**Interpretasi**: Model mencapai performa prediktif kuat pada test data unseen dengan R² > 0.77, menunjukkan arsitektur 7-feature single-layer efektif menangkap pola kelembaban tanah meskipun ada constraint arsitektur.`
 
 ## Detail Implementasi
 
@@ -163,7 +164,7 @@ Range output: [0, 1]
 
 ## Catatan tentang Limitasi
 
-1. **Single Hidden Layer Constraint**: Membatasi ekspresivitas model; ceiling performa sekitar R² = 0,80
+1. **Single Hidden Layer Constraint**: Membatasi ekspresivitas model; ceiling performa sekitar R² = 0.80
 2. **Manual Backpropagation**: Implementasi intentional untuk tujuan edukasi; tidak optimal untuk deployment skala besar
 3. **Feature Dependencies**: Model dilatih hanya pada 7 feature saat ini; menambah/menghapus feature memerlukan retraining
 4. **Ammonia Exclusion**: Keputusan preprocessing kritis berdasarkan analisis kualitas data; model dengan ammonia menunjukkan performa degraded
