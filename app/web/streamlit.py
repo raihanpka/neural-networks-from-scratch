@@ -989,8 +989,8 @@ with tab4:
                 with col4:
                     st.metric("Test Samples", f"{len(y_true):,}")
                 
-                # Sample preview (ambil 100 sampel random untuk ditampilkan)
-                sample_size = min(100, len(y_true))
+                # Sample preview (ambil 300 sampel random untuk ditampilkan)
+                sample_size = min(300, len(y_true))
                 sample_idx = np.random.choice(len(y_true), sample_size, replace=False)
                 
                 results_df = pd.DataFrame({
@@ -1001,7 +1001,7 @@ with tab4:
                     'Error %': (abs_errors[sample_idx] / (y_true[sample_idx] + 1e-8)) * 100
                 })
                 
-                st.markdown("**Preview 100 Sample dari Test Set:**")
+                st.markdown("**Preview 300 Sample dari Test Set:**")
                 st.dataframe(
                     results_df.style.format({
                         'True Value': '{:.2f}',
