@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app.models.neuralnetwork import NeuralNetwork
 from app.function.layer import Dense
-from app.function.activations import ReLU, Softmax, Linear
+from app.function.activations import ReLU, Softmax, Linear, Sigmoid
 from app.function.regularization import BatchNormalization, Dropout
 from app.function.check_loss import CategoricalCrossentropy, MeanSquaredError
 from app.function.metrics import calculate_accuracy, calculate_r2_score, calculate_mae, calculate_rmse
@@ -92,14 +92,14 @@ def main(dataset_path='app/data/soil_moisture_level.csv', epochs=500, batch_size
     model.add(Dropout(0.2))
     
     model.add(Dense(32, 1, learning_rate=lr))
-    model.add(Linear())
+    model.add(Sigmoid())
     
     model.set_loss(MeanSquaredError())
     
     print('Model Architecture:')
     print(f'  Input: {input_size} neurons')
     print(f'  Hidden Layer: 32 neurons + ReLU + Dropout(0.2) + BatchNorm')
-    print(f'  Output: 1 neuron + Linear activation')
+    print(f'  Output: 1 neuron + Sigmoid activation (bounded [0, 1])')
     print(f'Hyperparameters: epochs={epochs}, batch_size={batch_size}, lr={lr}')
     print('='*60)
     

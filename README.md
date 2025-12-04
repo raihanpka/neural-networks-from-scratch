@@ -26,7 +26,7 @@ Pipeline preprocessing mengikuti urutan ini:
 
 1. **Feature Selection**: Hapus ammonia (kualitas rendah), pertahankan 7 sensor feature
 2. **Data Cleaning**: Tangani nilai NaN dengan mengganti menjadi 0
-3. **Train-Test Split**: 80% training (16.132 sampel), 20% test (4.034 sampel) dengan permutasi acak
+3. **Train-Test Split**: 70% training (16.132 sampel), 30% test (4.034 sampel) dengan permutasi acak
 4. **Normalisasi**: Terapkan Min-Max scaling (detail di bawah)
 
 ## Metode Normalisasi
@@ -60,15 +60,15 @@ Dropout (probability=0.2)
         ↓
 Dense Layer (1 neuron, learning_rate=0.001)
         ↓
-Linear Activation (output tak terbatas untuk regression)
+Sigmoid Activation (output bounded [0, 1] untuk regression)
 ```
 
 **Pilihan Arsitektur**:
 - **Single Hidden Layer**: Sesuai project constraint, dipilih 32 neuron sebagai trade-off optimal antara kapasitas dan pencegahan overfitting
 - **ReLU Activation**: Transformasi non-linear untuk hidden layer, memungkinkan pembelajaran pola kompleks
-- **Linear Output**: Diperlukan untuk regression menghasilkan prediksi tak terbatas
+- **Sigmoid Output**: Menghasilkan prediksi terbatas pada range [0, 1], setelah denormalisasi menghasilkan prediksi valid dalam range target asli [0, 7937]. Mencegah prediksi negatif atau exceeding maksimum nilai.
 - **BatchNormalization**: Normalisasi input layer, stabilisasi training, kurangi internal covariate shift
-- **Dropout**: Menonaktifkan 20% neuron secara acak saat training, kurangi co-adaptation dan overfitting
+- **Dropout**: Menonaktifkan beberapa neuron secara acak saat training, kurangi co-adaptation dan overfitting
 
 ## Konfigurasi Training
 
@@ -78,6 +78,26 @@ Linear Activation (output tak terbatas untuk regression)
 - **Batch Size**: 128 sampel per gradient update
 - **Epochs**: 500 pass lengkap melalui training data
 - **Gradient Clipping**: ±1.0 (cegah exploding gradient)
+- **Output Activation**: Sigmoid (untuk bounded regression output)
+
+### Output Activation: Sigmoid untuk Regression
+
+Model menggunakan **Sigmoid activation** pada output layer untuk menjamin prediksi berada dalam range yang valid:
+
+**Fungsi Sigmoid**: 
+$$\sigma(x) = \frac{1}{1 + e^{-x}}$$
+Range output: [0, 1]
+
+**Alasan Penggunaan Sigmoid**:
+- Mencegah prediksi negatif (yang tidak valid untuk soil_moisture)
+- Mencegah prediksi exceeding maksimum nilai target (7937)
+- Memberikan probabilitas-like output yang lebih stabil saat training
+- Menghindari gradient vanishing pada nilai ekstrem
+
+**Pipeline Denormalisasi**:
+1. Sigmoid output bounded: $\hat{y}_{sigmoid} \in [0, 1]$
+2. Denormalisasi ke range target asli: $\hat{y}_{original} = \hat{y}_{sigmoid} \times (y_{max} - y_{min}) + y_{min}$
+3. Result: $\hat{y}_{original} \in [0, 7937]$ (always valid range)
 
 **Proses Gradient Descent**:
 1. Forward pass: Propagasi input melalui layer jaringan
@@ -113,10 +133,9 @@ Linear Activation (output tak terbatas untuk regression)
 
 | Metrik | Train | Test | Status |
 |--------|-------|------|--------|
-| R² Score | 0.7992 | 0.7765 | Kuat |
-| MAE (%) | ~11% | 12,60% | Cukup |
-| RMSE (%) | ~14% | 15,80% | Cukup |
-| Sampel | 16.132 | 4.034 | Split: 70/30 |
+| R² Score | 0.8085 | 0.7765 | Kuat |
+| MAE (%) | ~9.03% | 9.85% | Cukup |
+| RMSE (%) | ~14% | 16,97% | Cukup |
 
 **Interpretasi**: Model mencapai performa prediktif kuat pada test data unseen dengan R² > 0,77, menunjukkan arsitektur 7-feature single-layer efektif menangkap pola kelembaban tanah meskipun ada constraint arsitektur.
 

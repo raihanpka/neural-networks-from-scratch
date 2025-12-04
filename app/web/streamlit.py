@@ -447,8 +447,8 @@ with tab2:
         st.markdown("**Output Layer**")
         output_activation = st.selectbox(
             "Aktivasi Output",
-            options=['Linear', 'Sigmoid', 'Tanh', 'Softmax', 'ReLU'],
-            index=0,
+            options=['Linear', 'Sigmoid', 'Softmax', 'Tanh', 'ReLU'],
+            index=1,
         )
         activations_list.append(output_activation)
         
@@ -642,11 +642,11 @@ with tab3:
             
             model.add(Dense(prev_neurons, output_neurons, learning_rate=learning_rate))
             
-            # Untuk regression: OUTPUT HARUS LINEAR (tidak boleh dibatasi range)
-            # Untuk classification: gunakan output activation dari UI
+            # For regression: use Sigmoid (output bounded [0, 1])
+            # For classification: use output activation from UI
             if regression_mode:
-                output_activation_to_use = 'Linear'
-                st.session_state['output_activation_used'] = 'Linear'
+                output_activation_to_use = 'Sigmoid'
+                st.session_state['output_activation_used'] = 'Sigmoid (Bounded [0, 1])'
             else:
                 output_activation_to_use = st.session_state['output_activation']
                 st.session_state['output_activation_used'] = output_activation_to_use
@@ -954,8 +954,8 @@ with tab4:
         st.subheader("Evaluasi Detail pada Test Set")
         
         if regression_mode:
-            # Untuk regression: gunakan TEST SET langsung (20% data)
-            st.markdown("**Prediksi pada Test Set (20% dari seluruh data):**")
+            # Untuk regression: gunakan TEST SET langsung (30% data)
+            st.markdown("**Prediksi pada Test Set (30% dari seluruh data):**")
             
             # Langsung gunakan test set yang sudah ada
             if 'X_test' in st.session_state and 'y_raw_test' in st.session_state:
@@ -1009,7 +1009,7 @@ with tab4:
                         'Error': '{:.2f}',
                         'Error %': '{:.2f}%'
                     }).background_gradient(subset=['Error %'], cmap='RdYlGn_r', vmin=0, vmax=30),
-                    width='stretch',
+                    width='stretch'
                 )
                 
                 # Analisis distribusi error
@@ -1041,7 +1041,7 @@ with tab4:
                         st.write(f"- Target Min: {st.session_state.get('target_min', 'N/A')}")
                         st.write(f"- Target Max: {st.session_state.get('target_max', 'N/A')}")
                         st.write(f"- Output Activation (UI): {st.session_state.get('output_activation', 'N/A')}")
-                        st.write(f"- Output Activation (Used): {st.session_state.get('output_activation_used', 'N/A')} ⚠️ For regression, forced to Linear")
+                        st.write(f"- Output Activation (Used): {st.session_state.get('output_activation_used', 'N/A')} ✅ For regression, bounded to [0, 1]")
                         
                         if st.session_state.get('normalize_method_used') == 'minmax':
                             x_min = st.session_state.get('x_min', None)
