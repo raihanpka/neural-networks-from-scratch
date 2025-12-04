@@ -4,7 +4,7 @@ Implementasi deep learning untuk memprediksi tingkat kelembaban tanah menggunaka
 
 ## Dataset
 
-**Sumber**: `app/data/soil_moisture.csv`
+**Sumber**: `app/data/soil_moisture.csv` [Kaggle](https://www.kaggle.com/datasets/jshndeep/soil-moisture-levels)
 
 - **Total Sampel**: 20.166 records
 - **Target Variable**: soil_moisture (range: 0-7937 unit arbitrary)
