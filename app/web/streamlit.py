@@ -11,9 +11,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 
 from app.models.neuralnetwork import NeuralNetwork
 from app.function.layer import Dense
-from app.function.activations import ReLU, Softmax, Sigmoid, Tanh
+from app.function.activations import ReLU, Softmax, Sigmoid, Tanh, Linear
 from app.function.regularization import BatchNormalization, Dropout
 from app.function.check_loss import CategoricalCrossentropy, MeanSquaredError, MeanAbsoluteError
+from app.data.dataset import generate_soil_moisture_dataset
 from app.function.metrics import calculate_accuracy
 
 st.set_page_config(page_title="Group 1 - Neural Network (PBL AI)", layout="wide", page_icon="📊")
@@ -35,7 +36,8 @@ def get_activation_class(name):
         'ReLU': ReLU,
         'Sigmoid': Sigmoid,
         'Tanh': Tanh,
-        'Softmax': Softmax
+        'Softmax': Softmax,
+        'Linear': Linear
     }
     return activations.get(name, ReLU)
 
@@ -150,47 +152,92 @@ DATA_PATH = os.path.join(os.path.dirname(__file__), '../data/soil_moisture.csv')
 
 with st.sidebar:
     st.header("Konfigurasi Data")
-    
-    use_builtin = st.checkbox("Gunakan dataset bawaan", value=True)
-    
-    if use_builtin and os.path.exists(DATA_PATH):
-        sample_size = st.slider("Jumlah sampel data", 1000, 50000, 10000, step=1000,
-                               help="Dataset asli memiliki 300k+ baris, sampling untuk efisiensi")
-        df = pd.read_csv(DATA_PATH)
-        df = df.sample(n=min(sample_size, len(df)), random_state=42)
-        st.success(f"Dataset dimuat: {len(df)} sampel")
-    else:
-        uploaded_file = st.file_uploader("Upload file CSV", type=['csv'])
-        if uploaded_file is not None:
-            df = pd.read_csv(uploaded_file)
-            st.success(f"Dataset loaded: {df.shape[0]} baris")
+
+    # Pilih sumber dataset (mutually exclusive)
+    data_source = st.radio("Sumber dataset", 
+                           options=["Built-in (CSV)", "Upload CSV", "Synthetic (Generate)"],
+                           index=2)
+
+    df = None
+
+    # Synthetic dataset options
+    if data_source == "Synthetic (Generate)":
+        st.subheader('Buat dataset sintetis')
+        synth_rows = st.number_input("Jumlah baris per lokasi (period days)", min_value=30, max_value=2000, value=365)
+        synth_locations = st.number_input("Jumlah lokasi sintetis", min_value=1, max_value=100, value=5)
+        synth_seed = st.number_input("Seed (random)", min_value=0, max_value=10000, value=42, step=1)
+        if st.button('Generate dataset'):
+            df = generate_soil_moisture_dataset(n_rows=synth_rows, seed=int(synth_seed),
+                                                save_csv=False, path=DATA_PATH, plot=False,
+                                                add_time=True, n_locations=int(synth_locations), period_days=synth_rows)
+            st.session_state['df'] = df
+            st.session_state['feature_cols'] = [c for c in ['latitude','longitude','clay_content','sand_content','silt_content','sm_aux'] if c in df.columns] or [c for c in ['temperature','humidity','rainfall','cloud_cover'] if c in df.columns]
+            st.session_state['target_col'] = 'sm_tgt' if 'sm_tgt' in df.columns else 'soil_moisture'
+            st.success(f'Dataset sintetis berhasil dibuat: {len(df)} baris ({synth_locations} lokasi)')
+
+    # Built-in dataset options
+    elif data_source == "Built-in (CSV)":
+        st.subheader("Dataset Bawaan")
+        if os.path.exists(DATA_PATH):
+            sample_size = st.slider("Jumlah sampel data (sampling)", 1000, 50000, 10000, step=1000,
+                                   help="Dataset asli memiliki 300k+ baris, sampling untuk efisiensi")
+            if st.button("Muat Dataset Bawaan"):
+                try:
+                    df_full = pd.read_csv(DATA_PATH)
+                    df = df_full.sample(n=min(sample_size, len(df_full)), random_state=42)
+                    st.session_state['df'] = df
+                    st.success(f"Dataset dimuat: {len(df)} sampel")
+                except Exception as e:
+                    st.error(f"Gagal memuat dataset bawaan: {e}")
         else:
-            df = None
-    
+            st.warning("Dataset bawaan tidak ditemukan di path: " + DATA_PATH)
+
+    # Upload CSV options
+    elif data_source == "Upload CSV":
+        st.subheader("Upload file CSV")
+        enable_upload = st.checkbox("Aktifkan Upload CSV", value=False)
+        if enable_upload:
+            uploaded_file = st.file_uploader("Upload file CSV", type=['csv'])
+            if uploaded_file is not None:
+                try:
+                    df = pd.read_csv(uploaded_file)
+                    st.session_state['df'] = df
+                    st.success(f"Dataset loaded: {df.shape[0]} baris")
+                except Exception as e:
+                    st.error(f"Gagal membaca file CSV: {e}")
+                    df = None
+            else:
+                st.info("Silakan pilih file CSV untuk di-upload")
+        else:
+            st.info("Aktifkan opsi upload untuk menampilkan uploader")
+
+    # Jika df telah terisi (dari salah satu pilihan), tunjukkan opsi kolom/preprocessing
     if df is not None:
         st.subheader("Pilih Kolom")
         numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
-        
-        default_features = ['latitude', 'longitude', 'clay_content', 'sand_content', 
-                           'silt_content', 'sm_aux']
+
+        default_features = ['latitude', 'longitude', 'clay_content', 'sand_content',
+                            'silt_content', 'sm_aux']
         default_features = [f for f in default_features if f in numeric_columns]
-        
+
         feature_cols = st.multiselect(
             "Kolom Fitur (X)",
             options=numeric_columns,
-            default=default_features if default_features else numeric_columns[:-1]
+            default=default_features if default_features else (numeric_columns[:-1] if len(numeric_columns) > 1 else numeric_columns)
         )
-        
-        default_target = 'sm_tgt' if 'sm_tgt' in numeric_columns else numeric_columns[-1]
-        target_col = st.selectbox(
-            "Kolom Target (Y)",
-            options=numeric_columns,
-            index=numeric_columns.index(default_target) if default_target in numeric_columns else 0
-        )
-        
+
+        default_target = 'sm_tgt' if 'sm_tgt' in numeric_columns else (numeric_columns[-1] if numeric_columns else None)
+        target_col = None
+        if numeric_columns:
+            target_col = st.selectbox(
+                "Kolom Target (Y)",
+                options=numeric_columns,
+                index=numeric_columns.index(default_target) if default_target in numeric_columns else 0
+            )
+
         n_classes = st.slider("Jumlah kelas (diskritisasi target)", 3, 10, 5,
                              help="Target kontinyu akan di-bin menjadi n kelas")
-        
+
         st.subheader("Preprocessing")
         normalize_method = st.selectbox(
             "Metode Normalisasi",
@@ -201,7 +248,8 @@ with st.sidebar:
                 'zscore': 'Z-Score Standardization'
             }.get(x, x)
         )
-        
+
+        # Simpan ke session state
         st.session_state['df'] = df
         st.session_state['feature_cols'] = feature_cols
         st.session_state['target_col'] = target_col
@@ -333,7 +381,7 @@ with tab2:
                 )
                 activation = st.selectbox(
                     f"Aktivasi",
-                    options=['ReLU', 'Sigmoid', 'Tanh'],
+                    options=['ReLU', 'Sigmoid', 'Tanh', 'Linear'],
                     key=f"activation_{i}"
                 )
             
@@ -350,11 +398,14 @@ with tab2:
             activations_list.append(activation)
         
         st.markdown("**Output Layer**")
-        output_activation = st.selectbox(
-            "Aktivasi Output",
-            options=['Softmax', 'Sigmoid'],
-            help="Softmax untuk multi-class classification"
-        )
+        if st.session_state.get('regression_mode', False):
+            output_activation = 'Linear'
+            st.write('Output Activation: **Linear** (regression mode)')
+        else:
+            output_activation = st.selectbox(
+                "Aktivasi Output",
+                options=['ReLU', 'Softmax', 'Sigmoid', 'Linear'],
+            )
         activations_list.append(output_activation)
         
         st.session_state['layer_config'] = layer_config
@@ -442,13 +493,22 @@ with tab3:
             X = np.nan_to_num(X, nan=0.0)
             X = normalize_data(X, normalize_method)
             
-            y_raw = df[target_col].values
-            Y, bin_edges = discretize_target(y_raw, n_classes)
-            
-            st.session_state['bin_edges'] = bin_edges
+            regression_mode = st.session_state.get('regression_mode', False)
+            y_raw = df[target_col].values.astype(np.float32)
+            if regression_mode:
+                y_min = float(y_raw.min())
+                y_max = float(y_raw.max())
+                denom = y_max - y_min if (y_max - y_min) != 0 else 1.0
+                Y = ((y_raw - y_min) / denom).reshape(-1, 1)
+                bin_edges = None
+                st.session_state['target_min'] = y_min
+                st.session_state['target_max'] = y_max
+            else:
+                Y, bin_edges = discretize_target(y_raw, n_classes)
+                st.session_state['bin_edges'] = bin_edges
             
             input_size = X.shape[1]
-            actual_classes = len(np.unique(Y))
+            actual_classes = len(np.unique(Y)) if not regression_mode else 1
             
             st.info(f"Training: {len(X)} sampel, {input_size} fitur, {actual_classes} kelas")
             
@@ -514,12 +574,24 @@ with tab3:
                 
                 if epoch % 5 == 0 or epoch == epochs - 1:
                     val_output = model.forward(X, training=False)
-                    accuracy = calculate_accuracy(Y, val_output)
+                    if regression_mode:
+                        preds = val_output.flatten()
+                        y_min = st.session_state.get('target_min', 0.0)
+                        y_max = st.session_state.get('target_max', 1.0)
+                        denom = y_max - y_min if (y_max - y_min) != 0 else 1.0
+                        preds_orig = preds * denom + y_min
+                        y_original = y_raw
+                        accuracy = np.mean(np.abs(preds_orig - y_original))
+                    else:
+                        accuracy = calculate_accuracy(Y, val_output)
                     accuracies.append(accuracy)
                     
                     progress = (epoch + 1) / epochs
                     progress_bar.progress(progress)
-                    status_text.text(f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.6f} - Accuracy: {accuracy:.4f}")
+                    if regression_mode:
+                        status_text.text(f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.6f} - MAE: {accuracy:.4f}")
+                    else:
+                        status_text.text(f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.6f} - Accuracy: {accuracy:.4f}")
                     
                     loss_df = pd.DataFrame({'Epoch': range(len(losses)), 'Loss': losses})
                     loss_placeholder.line_chart(loss_df.set_index('Epoch'))
@@ -534,7 +606,17 @@ with tab3:
             progress_bar.progress(1.0)
             
             final_output = model.forward(X, training=False)
-            final_accuracy = calculate_accuracy(Y, final_output)
+            regression_mode = st.session_state.get('regression_mode', False)
+            if regression_mode:
+                preds = final_output.flatten()
+                y_min = st.session_state.get('target_min', 0.0)
+                y_max = st.session_state.get('target_max', 1.0)
+                denom = y_max - y_min if (y_max - y_min) != 0 else 1.0
+                preds_original = preds * denom + y_min
+                y_original = y_raw
+                final_accuracy = np.mean(np.abs(preds_original - y_original))
+            else:
+                final_accuracy = calculate_accuracy(Y, final_output)
             
             st.session_state['model'] = model
             st.session_state['losses'] = losses
@@ -553,7 +635,10 @@ with tab4:
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.metric("Final Accuracy", f"{st.session_state['final_accuracy']:.4f}")
+            if st.session_state.get('regression_mode', False):
+                st.metric("Final MAE", f"{st.session_state['final_accuracy']:.4f}")
+            else:
+                st.metric("Final Accuracy", f"{st.session_state['final_accuracy']:.4f}")
         with col2:
             st.metric("Final Loss", f"{st.session_state['losses'][-1]:.6f}")
         with col3:
@@ -593,72 +678,108 @@ with tab4:
         
         st.subheader("Analisis Prediksi")
         
-        predictions = st.session_state['model'].predict(st.session_state['X'])
-        Y = st.session_state['Y']
+        regression_mode = st.session_state.get('regression_mode', False)
+        model_obj = st.session_state['model']
+        X = st.session_state['X']
+        Y = st.session_state['Y'] if not regression_mode else st.session_state['y_raw']
+        if regression_mode:
+            preds_proba = model_obj.predict_proba(X).flatten()
+            y_min = st.session_state.get('target_min', None)
+            y_max = st.session_state.get('target_max', None)
+            if y_min is None or y_max is None:
+                preds_orig = preds_proba
+            else:
+                denom = (y_max - y_min) if (y_max - y_min) != 0 else 1.0
+                preds_orig = preds_proba * denom + y_min
+        else:
+            predictions = model_obj.predict(st.session_state['X'])
         
         col1, col2 = st.columns(2)
         
         with col1:
             fig, ax = plt.subplots(figsize=(8, 6))
-            unique_classes = np.unique(Y)
-            
-            pred_counts = [np.sum(predictions == c) for c in unique_classes]
-            true_counts = [np.sum(Y == c) for c in unique_classes]
-            
-            x = np.arange(len(unique_classes))
-            width = 0.35
-            
-            bars1 = ax.bar(x - width/2, true_counts, width, label='Actual', color='#3498DB', alpha=0.8)
-            bars2 = ax.bar(x + width/2, pred_counts, width, label='Predicted', color='#E74C3C', alpha=0.8)
-            
-            ax.set_xlabel('Kelas Soil Moisture')
-            ax.set_ylabel('Jumlah Sampel')
-            ax.set_title('Distribusi Kelas: Actual vs Predicted')
-            ax.set_xticks(x)
-            ax.set_xticklabels([f'Kelas {c}' for c in unique_classes])
-            ax.legend()
-            ax.grid(True, alpha=0.3, axis='y')
-            
+            if regression_mode:
+                # Plot predicted vs true scatter
+                ax.scatter(range(len(Y)), Y, label='True', alpha=0.5, s=10)
+                ax.scatter(range(len(preds_orig)), preds_orig, label='Predicted', alpha=0.5, s=10)
+                ax.set_xlabel('Sample Index')
+                ax.set_ylabel('Soil Moisture')
+                ax.set_title('True vs Predicted (Regression)')
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+            else:
+                unique_classes = np.unique(Y)
+                pred_counts = [np.sum(predictions == c) for c in unique_classes]
+                true_counts = [np.sum(Y == c) for c in unique_classes]
+                x = np.arange(len(unique_classes))
+                width = 0.35
+                bars1 = ax.bar(x - width/2, true_counts, width, label='Actual', color='#3498DB', alpha=0.8)
+                bars2 = ax.bar(x + width/2, pred_counts, width, label='Predicted', color='#E74C3C', alpha=0.8)
+                ax.set_xlabel('Kelas Soil Moisture')
+                ax.set_ylabel('Jumlah Sampel')
+                ax.set_title('Distribusi Kelas: Actual vs Predicted')
+                ax.set_xticks(x)
+                ax.set_xticklabels([f'Kelas {c}' for c in unique_classes])
+                ax.legend()
+                ax.grid(True, alpha=0.3, axis='y')
             st.pyplot(fig)
         
         with col2:
-            if 'y_raw' in st.session_state and 'bin_edges' in st.session_state:
+            if regression_mode:
+                # Plot residuals distribution
                 fig, ax = plt.subplots(figsize=(8, 6))
-                
-                correct = predictions == Y
-                y_raw = st.session_state['y_raw']
-                
-                ax.scatter(range(len(y_raw)), y_raw, c=correct, 
-                          cmap='RdYlGn', alpha=0.5, s=10)
-                ax.set_xlabel('Sample Index')
-                ax.set_ylabel('Soil Moisture (sm_tgt)')
-                ax.set_title('Prediksi per Sampel (Hijau=Benar, Merah=Salah)')
+                residuals = preds_orig - Y
+                ax.hist(residuals, bins=30, color='orange', edgecolor='white', alpha=0.7)
+                ax.set_xlabel('Residuals (Predicted - True)')
+                ax.set_title('Residuals Distribution')
                 ax.grid(True, alpha=0.3)
-                
                 st.pyplot(fig)
+            else:
+                if 'y_raw' in st.session_state and 'bin_edges' in st.session_state:
+                    fig, ax = plt.subplots(figsize=(8, 6))
+                    correct = predictions == Y
+                    y_raw = st.session_state['y_raw']
+                    ax.scatter(range(len(y_raw)), y_raw, c=correct, cmap='RdYlGn', alpha=0.5, s=10)
+                    ax.set_xlabel('Sample Index')
+                    ax.set_ylabel('Soil Moisture (sm_tgt)')
+                    ax.set_title('Prediksi per Sampel (Hijau=Benar, Merah=Salah)')
+                    ax.grid(True, alpha=0.3)
+                    st.pyplot(fig)
         
         st.subheader("Sample Prediksi")
         
-        sample_size = min(100, len(predictions))
-        sample_idx = np.random.choice(len(predictions), sample_size, replace=False)
+        n_samples = len(Y) if not regression_mode else len(Y)
+        sample_size = min(100, n_samples)
+        sample_idx = np.random.choice(n_samples, sample_size, replace=False)
         
-        results_df = pd.DataFrame({
-            'Sample': sample_idx,
-            'True Class': Y[sample_idx],
-            'Predicted Class': predictions[sample_idx],
-            'Correct': predictions[sample_idx] == Y[sample_idx]
-        })
+        if regression_mode:
+            results_df = pd.DataFrame({
+                'Sample': sample_idx,
+                'True Value': Y[sample_idx],
+                'Predicted Value': preds_orig[sample_idx],
+                'Abs Error': np.abs(preds_orig[sample_idx] - Y[sample_idx])
+            })
+            avg_error = results_df['Abs Error'].mean()
+            st.markdown(f"**Avg Abs Error (sample)**: {avg_error:.3f}")
+        else:
+            results_df = pd.DataFrame({
+                'Sample': sample_idx,
+                'True Class': Y[sample_idx],
+                'Predicted Class': predictions[sample_idx],
+                'Correct': predictions[sample_idx] == Y[sample_idx]
+            })
+            correct_pct = results_df['Correct'].mean() * 100
+            st.markdown(f"**Akurasi Sample**: {correct_pct:.1f}%")
         
-        correct_pct = results_df['Correct'].mean() * 100
-        st.markdown(f"**Akurasi Sample**: {correct_pct:.1f}%")
-        
-        st.dataframe(
-            results_df.style.apply(
-                lambda x: ['background-color: #d4edda' if v else 'background-color: #f8d7da' 
-                          for v in x], subset=['Correct']
-            ),
-            width='stretch'
-        )
+            if regression_mode:
+                st.dataframe(results_df.style.format({'True Value':'{:.3f}','Predicted Value':'{:.3f}','Abs Error':'{:.3f}'}), width='stretch')
+            else:
+                st.dataframe(
+                    results_df.style.apply(
+                        lambda x: ['background-color: #d4edda' if v else 'background-color: #f8d7da' for v in x], subset=['Correct']
+                    ),
+                    width='stretch'
+                )
         
     else:
         st.info("Lakukan training terlebih dahulu untuk melihat hasil")

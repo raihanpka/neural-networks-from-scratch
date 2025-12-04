@@ -92,9 +92,16 @@ class NeuralNetwork:
             # Validasi dan logging
             if epoch % 20 == 0 and verbose:
                 val_output = self.forward(X, training=False)
-                accuracy = calculate_accuracy(Y, val_output)
-                print(f"Epoch {epoch}, Loss: {avg_epoch_loss:.6f}, Accuracy: {accuracy:.4f}")
-                
+                # If val_output is 1D or has single output, treat as regression and compute MAE
+                if val_output.ndim == 1 or (val_output.ndim > 1 and val_output.shape[1] == 1):
+                    y_true_vals = Y.flatten() if hasattr(Y, 'flatten') else Y
+                    preds_vals = val_output.flatten()
+                    accuracy = np.mean(np.abs(preds_vals - y_true_vals))
+                    print(f"Epoch {epoch}, Loss: {avg_epoch_loss:.6f}, MAE: {accuracy:.6f}")
+                else:
+                    accuracy = calculate_accuracy(Y, val_output)
+                    print(f"Epoch {epoch}, Loss: {avg_epoch_loss:.6f}, Accuracy: {accuracy:.4f}")
+
                 self.history['loss'].append(avg_epoch_loss)
                 self.history['accuracy'].append(accuracy)
     

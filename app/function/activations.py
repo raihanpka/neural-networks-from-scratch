@@ -70,3 +70,16 @@ class Softmax(BaseActivation):
             self.dinputs[i] = np.dot(jacobian_matrix, dvalues[i])  # Menghitung gradient input
         
         return self.dinputs
+
+class Linear(BaseActivation):
+    # Activation function Linear (untuk regresi)
+    def forward(self, inputs):
+        """Melakukan proses forward untuk activation function Linear"""
+        self.inputs = inputs
+        self.output = inputs  # Output sama dengan input
+        return self.output
+
+    def backward(self, dvalues):
+        """Melakukan proses backward untuk activation function Linear"""
+        self.dinputs = dvalues.copy()  # Gradient input sama dengan dvalues
+        return self.dinputs
